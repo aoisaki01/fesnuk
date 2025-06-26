@@ -7,7 +7,8 @@ interface RouteParams {
   identifier: string; // Ini adalah ID atau username pengguna yang akan diblokir
 }
 
-export async function POST(request: NextRequest, { params }: { params: RouteParams }) {
+export async function POST(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const params = await context.params;
   try {
     // "Selesaikan" request sebelum mengakses params
     // Untuk POST ini, kita tidak mengharapkan body JSON, jadi request.text() cukup.

@@ -7,16 +7,18 @@ interface RouteParams {
   requestId: string; // ID dari entri di tabel friendships
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+    const { requestId } = await context.params;
+
   // "Selesaikan" request sebelum mengakses params (best practice Next.js baru)
   // Untuk DELETE request, body biasanya tidak ada atau tidak dibaca, jadi request.text() cukup.
   try {
     await request.text(); 
   } catch (e) { /* Abaikan error parsing jika tidak ada body */ }
 
-  console.log("DECLINE FRIEND REQUEST API: Full context received:", JSON.stringify({ params }, null, 2));
-  if (!params || !params.requestId) {
-    console.error("DECLINE FRIEND REQUEST API: FATAL - params.requestId is missing.");
+  console.log("DECLINE FRIEND REQUEST API: Full context received:", JSON.stringify({ requestId }, null, 2));
+  if (!requestId) {
+    console.error("DECLINE FRIEND REQUEST API: FATAL - requestId is missing.");
     return NextResponse.json({ message: 'Parameter requestId tidak ditemukan.' }, { status: 400 });
   }
 
@@ -26,9 +28,9 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId; // Pengguna yang login (yang akan menolak)
-    const requestId = parseInt(params.requestId, 10);
+    const requestIdNum = parseInt(requestId, 10);
 
-    if (isNaN(requestId)) {
+    if (isNaN(requestIdNum)) {
       return NextResponse.json({ message: 'Request ID tidak valid (bukan angka)' }, { status: 400 });
     }
 
@@ -38,7 +40,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     const friendshipStmt = db.prepare(
       `SELECT id, sender_id, receiver_id, status FROM friendships WHERE id = ?`
     );
-    const friendship = friendshipStmt.get(requestId) as { id: number; sender_id: number; receiver_id: number; status: string; } | undefined;
+    const friendship = friendshipStmt.get(requestIdNum) as { id: number; sender_id: number; receiver_id: number; status: string; } | undefined;
 
     if (!friendship) {
       return NextResponse.json({ message: 'Permintaan pertemanan tidak ditemukan' }, { status: 404 });
@@ -57,7 +59,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     // 4. Hapus entri permintaan pertemanan dari database
     // Menolak permintaan sama dengan menghapus record PENDING-nya.
     const deleteStmt = db.prepare('DELETE FROM friendships WHERE id = ? AND receiver_id = ?');
-    const info = deleteStmt.run(requestId, loggedInUserId); // Pastikan hanya receiver yg bisa delete PENDING requestnya
+    const info = deleteStmt.run(requestIdNum, loggedInUserId); // Pastikan hanya receiver yg bisa delete PENDING requestnya
 
     if (info.changes > 0) {
       // Notifikasi ke pengirim bahwa permintaannya ditolak (opsional)
@@ -76,7 +78,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     }
 
   } catch (error: any) {
-    console.error(`Gagal menolak permintaan pertemanan requestId: ${params?.requestId}:`, error);
+    console.error(`Gagal menolak permintaan pertemanan requestId: ${requestId}:`, error);
     return NextResponse.json({ message: 'Gagal memproses permintaan', error: error.message ? error.message : 'Unknown server error' }, { status: 500 });
   }
 }

@@ -28,7 +28,8 @@ const fetcher = async (url: string) => {
   if (!res.ok) {
     let errorData;
     try { errorData = await res.json(); } catch (e) { errorData = { message: `Request gagal ${res.status}` }; }
-    const error = new Error(errorData.message || 'Gagal mengambil data.'); /* @ts-ignore */ error.status = res.status;
+    const error = new Error(errorData.message || 'Gagal mengambil data.') as Error & { status?: number };
+    error.status = res.status;
     if ((res.status === 401 || res.status === 403) && url.includes('/api/chat/')) { if (typeof window !== "undefined") window.location.href = '/login';}
     throw error;
   }

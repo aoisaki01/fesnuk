@@ -30,7 +30,8 @@ async function createNotification(db: ReturnType<typeof getDbConnection>, params
     }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: RouteParams }) {
+export async function PUT(request: NextRequest, context: { params: Promise<RouteParams> }) {
+    const { requestId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
@@ -38,9 +39,9 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     }
     const loggedInUserId = authenticatedUser.userId; // Pengguna yang login (yang akan menerima)
     const loggedInUsername = authenticatedUser.username; // Untuk notifikasi
-    const requestId = parseInt(params.requestId, 10);
+    const requestIdParsed = parseInt(requestId, 10);
 
-    if (isNaN(requestId)) {
+    if (isNaN(requestIdParsed)) {
       return NextResponse.json({ message: 'Request ID tidak valid' }, { status: 400 });
     }
 
@@ -50,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     const friendshipStmt = db.prepare(
       `SELECT id, sender_id, receiver_id, status FROM friendships WHERE id = ?`
     );
-    const friendship = friendshipStmt.get(requestId) as { id: number; sender_id: number; receiver_id: number; status: string; } | undefined;
+    const friendship = friendshipStmt.get(requestIdParsed) as { id: number; sender_id: number; receiver_id: number; status: string; } | undefined;
 
     if (!friendship) {
       return NextResponse.json({ message: 'Permintaan pertemanan tidak ditemukan' }, { status: 404 });
@@ -70,7 +71,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     const updateStmt = db.prepare(
       "UPDATE friendships SET status = 'ACCEPTED', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     );
-    const info = updateStmt.run(requestId);
+    const info = updateStmt.run(requestIdParsed);
 
     if (info.changes > 0) {
       // Buat notifikasi untuk pengirim bahwa permintaannya diterima
@@ -89,7 +90,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     }
 
   } catch (error: any) {
-    console.error(`Gagal menerima permintaan pertemanan requestId: ${params?.requestId}:`, error);
+    console.error(`Gagal menerima permintaan pertemanan requestId: ${requestId}:`, error);
     return NextResponse.json({ message: 'Gagal memproses permintaan', error: error.message }, { status: 500 });
   }
 }

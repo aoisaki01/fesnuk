@@ -25,16 +25,17 @@ interface CommentData {
 }
 
 // Handler untuk PUT request - Mengedit Komentar
-export async function PUT(request: NextRequest, { params }: { params: RouteParams }) {
+export async function PUT(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { commentId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId;
-    const commentId = parseInt(params.commentId, 10);
+    const commentIdParsed = parseInt(commentId, 10);
 
-    if (isNaN(commentId)) {
+    if (isNaN(commentIdParsed)) {
       return NextResponse.json({ message: 'Comment ID tidak valid' }, { status: 400 });
     }
 
@@ -50,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     // 1. Cek apakah komentar ada dan milik pengguna yang login
     const commentCheckStmt = db.prepare('SELECT id, user_id, post_id FROM comments WHERE id = ?');
     // @ts-ignore
-    const existingComment = commentCheckStmt.get(commentId) as { id: number; user_id: number; post_id: number; } | undefined;
+    const existingComment = commentCheckStmt.get(commentIdParsed) as { id: number; user_id: number; post_id: number; } | undefined;
 
     if (!existingComment) {
       return NextResponse.json({ message: 'Komentar tidak ditemukan' }, { status: 404 });
@@ -64,7 +65,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     const updateStmt = db.prepare(
       'UPDATE comments SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?'
     );
-    const info = updateStmt.run(content, commentId, loggedInUserId);
+    const info = updateStmt.run(content, commentIdParsed, loggedInUserId);
 
     if (info.changes > 0) {
       // Ambil komentar yang sudah diupdate untuk dikembalikan
@@ -73,7 +74,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
         FROM comments
         WHERE id = ?
       `);
-      const updatedComment = updatedCommentStmt.get(commentId);
+      const updatedComment = updatedCommentStmt.get(commentIdParsed);
       return NextResponse.json({ message: 'Komentar berhasil diperbarui', comment: updatedComment }, { status: 200 });
     } else {
       // Bisa jadi karena konten baru sama dengan konten lama
@@ -81,22 +82,23 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     }
 
   } catch (error) {
-    console.error(`Gagal mengedit komentar ${params.commentId}:`, error);
+    console.error(`Gagal mengedit komentar ${commentId}:`, error);
     return NextResponse.json({ message: 'Gagal mengedit komentar', error: (error as Error).message }, { status: 500 });
   }
 }
 
 // Handler untuk DELETE request - Menghapus Komentar
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { commentId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId;
-    const commentId = parseInt(params.commentId, 10);
+    const commentIdParsed = parseInt(commentId, 10);
 
-    if (isNaN(commentId)) {
+    if (isNaN(commentIdParsed)) {
       return NextResponse.json({ message: 'Comment ID tidak valid' }, { status: 400 });
     }
 
@@ -109,7 +111,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     //    Untuk saat ini, kita batasi hanya pemilik komentar.
     const commentCheckStmt = db.prepare('SELECT id, user_id, post_id FROM comments WHERE id = ?');
     // @ts-ignore
-    const existingComment = commentCheckStmt.get(commentId) as { id: number; user_id: number; post_id: number; } | undefined;
+    const existingComment = commentCheckStmt.get(commentIdParsed) as { id: number; user_id: number; post_id: number; } | undefined;
 
     if (!existingComment) {
       return NextResponse.json({ message: 'Komentar tidak ditemukan' }, { status: 404 });
@@ -131,7 +133,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     const deleteStmt = db.prepare('DELETE FROM comments WHERE id = ? AND user_id = ?');
     // Jika pemilik post juga boleh menghapus, WHERE clause-nya akan berbeda.
     // const deleteStmt = db.prepare('DELETE FROM comments WHERE id = ?');
-    const info = deleteStmt.run(commentId, loggedInUserId);
+    const info = deleteStmt.run(commentIdParsed, loggedInUserId);
 
 
     if (info.changes > 0) {
@@ -145,7 +147,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     }
 
   } catch (error) {
-    console.error(`Gagal menghapus komentar ${params.commentId}:`, error);
+    console.error(`Gagal menghapus komentar ${commentId}:`, error);
     return NextResponse.json({ message: 'Gagal menghapus komentar', error: (error as Error).message }, { status: 500 });
   }
 }

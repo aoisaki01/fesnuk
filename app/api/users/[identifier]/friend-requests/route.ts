@@ -29,7 +29,8 @@ async function createNotification(db: ReturnType<typeof getDbConnection>, params
     }
 }
 
-export async function POST(request: NextRequest, context: { params: RouteContextParams }) {
+export async function POST(request: NextRequest, context: { params: Promise<RouteContextParams> }) {
+  const params = await context.params;
   // 1. "Selesaikan" objek request terlebih dahulu
   // Untuk POST ini, kita tidak membaca body dari client, jadi request.text() cukup.
   // Jika Anda mengirim JSON body dari client untuk API POST lain, gunakan await request.json().
@@ -46,11 +47,11 @@ export async function POST(request: NextRequest, context: { params: RouteContext
   console.log("FRIEND REQUEST API Handler (after await): Full context received:", JSON.stringify(context, null, 2));
   console.log("FRIEND REQUEST API Handler (after await): context.params:", JSON.stringify(context?.params, null, 2));
 
-  if (!context || !context.params || typeof context.params.identifier !== 'string' || context.params.identifier.trim() === '') {
-    console.error("FRIEND REQUEST API: ERROR - context.params.identifier is missing, not a string, or empty.");
+  if (!params || typeof params.identifier !== 'string' || params.identifier.trim() === '') {
+    console.error("FRIEND REQUEST API: ERROR - params.identifier is missing, not a string, or empty.");
     return NextResponse.json({ message: 'Parameter rute "identifier" pengguna tidak ditemukan atau tidak valid.' }, { status: 400 });
   }
-  const { identifier: receiverIdentifier } = context.params;
+  const receiverIdentifier = params.identifier;
 
   // 3. Lanjutkan dengan autentikasi dan logika utama
   try {
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest, context: { params: RouteContext
     }
 
   } catch (error: any) { // Ini akan menangkap error dari langkah 3 dan seterusnya
-    console.error(`Gagal memproses permintaan pertemanan untuk identifier ${context?.params?.identifier}:`, error);
+    console.error(`Gagal memproses permintaan pertemanan untuk identifier ${params?.identifier}:`, error);
     return NextResponse.json({ message: 'Gagal memproses permintaan pertemanan.', error: error.message ? error.message : 'Unknown server error' }, { status: 500 });
   }
 }

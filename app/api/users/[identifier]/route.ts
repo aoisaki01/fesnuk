@@ -40,7 +40,8 @@ interface PostForProfileAPI {
   is_liked_by_me: boolean;
 }
 
-export async function GET(request: NextRequest, { params }: { params: { identifier: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ identifier: string }> }) {
+  const params = await context.params;
   try {
     // =============================================
     // PERBAIKAN: "Selesaikan" request sebelum mengakses params

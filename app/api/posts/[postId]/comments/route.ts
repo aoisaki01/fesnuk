@@ -87,22 +87,11 @@ async function getMentionedUserIdsInComment(db: sqlite3.Database, content: strin
 }
 
 // Handler untuk POST request - Menambahkan komentar baru
-export async function POST(request: NextRequest, { params }: { params: RouteParams }) {
-  let body: CreateCommentRequestBody;
-  try {
-    body = await request.json() as CreateCommentRequestBody;
-  } catch (e) {
-    console.error("API Add Comment: Gagal parse JSON body:", e);
-    return NextResponse.json({ message: 'Format request body tidak valid atau body kosong.' }, { status: 400 });
-  }
-
-  if (!params || !params.postId) {
-      console.error("API Add Comment: postId tidak ditemukan di parameter rute.");
-      return NextResponse.json({ message: 'Post ID tidak ditemukan.' }, { status: 400 });
-  }
-  const postIdString = params.postId;
+export async function POST(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
 
   try {
+    const body = await request.json() as CreateCommentRequestBody;
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan.' }, { status: 401 });
@@ -110,8 +99,9 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
     const commenterId = authenticatedUser.userId;
     const commenterUsername = authenticatedUser.username;
     
-    const postId = parseInt(postIdString, 10);
-    if (isNaN(postId)) {
+    const postIdString = postId;
+    const postIdNum = parseInt(postIdString, 10);
+    if (isNaN(postIdNum)) {
       return NextResponse.json({ message: 'Post ID tidak valid.' }, { status: 400 });
     }
 
@@ -125,7 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
     const db = getDbConnection();
 
     const postStmt = db.prepare('SELECT id, user_id as authorId, visibility_status FROM posts WHERE id = ?');
-    const post = postStmt.get(postId) as { id: number; authorId: number; visibility_status: string } | undefined;
+    const post = postStmt.get(postIdNum) as { id: number; authorId: number; visibility_status: string } | undefined;
 
     if (!post) return NextResponse.json({ message: 'Postingan tidak ditemukan.' }, { status: 404 });
     if (post.visibility_status !== 'VISIBLE') return NextResponse.json({ message: 'Tidak dapat berkomentar pada postingan ini.'}, {status: 403});
@@ -140,14 +130,14 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       const parentCommentStmt = db.prepare('SELECT id, post_id, user_id FROM comments WHERE id = ?');
       const parentComment = parentCommentStmt.get(parentCommentId) as {id: number, post_id: number, user_id: number} | undefined;
       if (!parentComment) return NextResponse.json({ message: 'Komentar induk tidak ditemukan.' }, { status: 404 });
-      if (parentComment.post_id !== postId) return NextResponse.json({ message: 'Komentar induk tidak valid untuk postingan ini.' }, { status: 400 });
+      if (parentComment.post_id !== postIdNum) return NextResponse.json({ message: 'Komentar induk tidak valid untuk postingan ini.' }, { status: 400 });
       parentCommentAuthorId = parentComment.user_id;
     }
 
     const insertCommentStmt = db.prepare(
       'INSERT INTO comments (user_id, post_id, parent_comment_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
     );
-    const info = insertCommentStmt.run(commenterId, postId, parentCommentId || null, commentContent);
+    const info = insertCommentStmt.run(commenterId, postIdNum, parentCommentId || null, commentContent);
 
     if (info.changes > 0 && info.lastInsertRowid) {
       const newCommentId = info.lastInsertRowid as number;
@@ -161,7 +151,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       if (authorId !== commenterId) { // Tidak notifikasi jika komentar di post sendiri
         await createNotification(db, {
           recipientUserId: authorId, actorUserId: commenterId, type: 'NEW_COMMENT',
-          targetEntityType: 'POST', targetEntityId: postId,
+          targetEntityType: 'POST', targetEntityId: postIdNum,
           message: `${commenterUsername || 'Seseorang'} mengomentari postingan Anda.`
         });
       }
@@ -170,7 +160,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
       if (parentCommentId && parentCommentAuthorId && parentCommentAuthorId !== commenterId && parentCommentAuthorId !== authorId) {
         await createNotification(db, {
             recipientUserId: parentCommentAuthorId, actorUserId: commenterId, type: 'REPLY_TO_COMMENT',
-            targetEntityType: 'POST', targetEntityId: postId,
+            targetEntityType: 'POST', targetEntityId: postIdNum,
             message: `${commenterUsername || 'Seseorang'} membalas komentar Anda.`
         });
       }
@@ -181,7 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
         if (mentionedUserId !== authorId && mentionedUserId !== parentCommentAuthorId) { 
           await createNotification(db, {
             recipientUserId: mentionedUserId, actorUserId: commenterId, type: 'MENTION_IN_COMMENT',
-            targetEntityType: 'POST', targetEntityId: postId,
+            targetEntityType: 'POST', targetEntityId: postIdNum,
             message: `${commenterUsername || 'Seseorang'} menyebut Anda dalam sebuah komentar.`
           });
         }
@@ -194,31 +184,32 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
     }
 
   } catch (error: any) {
-    console.error(`Gagal menambahkan komentar untuk postId ${params?.postId}:`, error);
+    console.error(`Gagal menambahkan komentar untuk postId ${postId}:`, error);
     return NextResponse.json({ message: 'Gagal memproses penambahan komentar.', error: error.message ? error.message : 'Unknown server error' }, { status: 500 });
   }
 }
 
 // GET handler untuk mengambil komentar
-export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
+export async function GET(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
   try {
-    await request.text(); 
+    await request.text();
     const authenticatedUser = verifyAuth(request);
     const currentUserId = authenticatedUser ? authenticatedUser.userId : null;
 
-    if (!params || !params.postId) return NextResponse.json({ message: 'Post ID tidak ada.' }, { status: 400 });
-    const postId = parseInt(params.postId, 10);
-    if (isNaN(postId)) return NextResponse.json({ message: 'Post ID tidak valid.' }, { status: 400 });
+    if (!postId) return NextResponse.json({ message: 'Post ID tidak ada.' }, { status: 400 });
+    const postIdNum = parseInt(postId, 10);
+    if (isNaN(postIdNum)) return NextResponse.json({ message: 'Post ID tidak valid.' }, { status: 400 });
 
     const db = getDbConnection();
     const postExistsStmt = db.prepare('SELECT id, user_id as authorId, visibility_status FROM posts WHERE id = ?');
-    const post = postExistsStmt.get(postId) as {id: number, authorId: number, visibility_status: string} | undefined;
+    const post = postExistsStmt.get(postIdNum) as {id: number, authorId: number, visibility_status: string} | undefined;
     if (!post) return NextResponse.json({ message: 'Postingan tidak ditemukan.' }, { status: 404 });
     
     if (post.visibility_status !== 'VISIBLE') {
-        if (!currentUserId || currentUserId !== post.authorId) {
-             return NextResponse.json({ message: 'Komentar untuk postingan ini tidak dapat ditampilkan.' }, { status: 403 });
-        }
+      if (!currentUserId || currentUserId !== post.authorId) {
+        return NextResponse.json({ message: 'Komentar untuk postingan ini tidak dapat ditampilkan.' }, { status: 403 });
+      }
     }
 
     let commentsQuery = `
@@ -226,25 +217,25 @@ export async function GET(request: NextRequest, { params }: { params: RouteParam
              u.username as author_username, COALESCE(u.profile_picture_url, '') as author_profile_picture_url
       FROM comments c JOIN users u ON c.user_id = u.id
       WHERE c.post_id = ? `;
-    const queryParams: any[] = [postId];
+    const queryParams: any[] = [postIdNum];
 
     if (currentUserId) {
-        commentsQuery += `
+      commentsQuery += `
             AND c.user_id NOT IN (SELECT blocked_user_id FROM user_blocks WHERE blocker_id = ?)
             AND c.user_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_user_id = ?) `;
-        queryParams.push(currentUserId, currentUserId);
+      queryParams.push(currentUserId, currentUserId);
     }
     commentsQuery += ` ORDER BY c.created_at ASC`;
 
     const commentsStmt = db.prepare(commentsQuery);
     const comments = commentsStmt.all(...queryParams) as CommentWithAuthor[];
-    
+
     return NextResponse.json(comments, { status: 200 });
   } catch (error: any) {
-    console.error(`Gagal mengambil komentar untuk postId ${params?.postId}:`, error);
+    console.error(`Gagal mengambil komentar untuk postId ${postId}:`, error);
     if (error.code === 'SQLITE_ERROR' && error.message.includes('no such column')) {
-        console.error("DATABASE SCHEMA ERROR: Kolom yang dibutuhkan tidak ada. Harap perbarui skema database Anda.");
-        return NextResponse.json({ message: 'Kesalahan database: Skema tabel tidak lengkap.', internalErrorCode: 'DB_SCHEMA_MISSING_COL' }, { status: 500 });
+      console.error("DATABASE SCHEMA ERROR: Kolom yang dibutuhkan tidak ada. Harap perbarui skema database Anda.");
+      return NextResponse.json({ message: 'Kesalahan database: Skema tabel tidak lengkap.', internalErrorCode: 'DB_SCHEMA_MISSING_COL' }, { status: 500 });
     }
     return NextResponse.json({ message: 'Gagal mengambil komentar.', error: error.message ? error.message : 'Unknown server error' }, { status: 500 });
   }

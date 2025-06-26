@@ -2,7 +2,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getDbConnection } from '@/lib/db'; // Pastikan path ke db.ts benar
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 
 interface LoginRequestBody {
   emailOrUsername?: string;
@@ -23,8 +23,8 @@ interface UserSafeData {
 
 // SANGAT PENTING: Simpan secret ini di environment variable (.env) di aplikasi produksi!
 // Jangan pernah hardcode secret di kode produksi.
-const JWT_SECRET = process.env.JWT_SECRET || 'your-very-strong-secret-key-for-development-sosmed';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d'; // Token berlaku selama 1 hari, bisa disesuaikan
+const JWT_SECRET: string = process.env.JWT_SECRET || 'your-very-strong-secret-key-for-development-sosmed';
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '1d'; // Token berlaku selama 1 hari, bisa disesuaikan
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,9 +75,8 @@ export async function POST(request: NextRequest) {
       // Anda bisa menambahkan role atau data non-sensitif lain di sini jika perlu
     };
 
-    const token = jwt.sign(tokenPayload, JWT_SECRET, {
-      expiresIn: JWT_EXPIRES_IN,
-    });
+    const signOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN as any };
+    const token = jwt.sign(tokenPayload, JWT_SECRET, signOptions);
 
     console.log(`User ${user.username} logged in successfully.`);
     return NextResponse.json({

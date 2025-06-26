@@ -1,70 +1,72 @@
 // src/app/(main)/chat/page.tsx
 "use client";
 
-import { useEffect, useState } from 'react';
+// BARU: Memaksa halaman ini untuk selalu dirender secara dinamis di server.
+// Ini adalah solusi utama untuk error "prerendering page".
+export const dynamic = 'force-dynamic';
+
+import { useEffect, useState, Suspense } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-// Tipe data untuk ChatRoom yang diterima dari API GET /api/chat/rooms
+// Tipe data untuk ChatRoom yang diterima dari API
 interface ChatRoomListData {
-  id: number; // Room ID
+  id: number;
   last_message_at: string;
   other_user_id: number;
   other_username: string;
   other_profile_picture_url: string | null;
-  // Anda bisa menambahkan last_message_preview jika API mengirimkannya nanti
 }
 
-// Fungsi fetcher global (bisa diimpor jika sudah ada)
+// Fungsi fetcher yang akan berjalan di client
 const fetcher = async (url: string) => {
   const token = localStorage.getItem('jwtToken');
   if (!token) {
-    if (typeof window !== "undefined") (window.location.href = '/login');
+    // Jika tidak ada token, langsung arahkan ke login
+    if (typeof window !== "undefined") window.location.href = '/login';
     throw new Error('Autentikasi dibutuhkan.');
   }
+
   const res = await fetch(url, {
     headers: { 'Authorization': `Bearer ${token}` },
   });
+
   if (!res.ok) {
-    let errorData;
-    try {
-        errorData = await res.json();
-    } catch(e) {
-        errorData = { message: `Request gagal dengan status ${res.status}`};
+    // Handle error jika token tidak valid atau ada masalah server
+    if (res.status === 401) {
+      localStorage.removeItem('jwtToken');
+      localStorage.removeItem('userData');
+      if (typeof window !== "undefined") window.location.href = '/login';
     }
+    const errorData = await res.json().catch(() => ({ message: `Request gagal dengan status ${res.status}` }));
     const error = new Error(errorData.message || 'Gagal mengambil data chat.');
     // @ts-ignore
     error.status = res.status;
-    if (res.status === 401) {
-        localStorage.removeItem('jwtToken');
-        localStorage.removeItem('userData');
-        if (typeof window !== "undefined") (window.location.href = '/login');
-    }
     throw error;
   }
   return res.json();
 };
 
-export default function ChatListPage() {
-  const [isClient, setIsClient] = useState(false);
+// Komponen utama yang berisi semua logika dan UI
+function ChatComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // State untuk menandai room mana yang aktif (berguna untuk styling)
   const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
 
+  // Cek token saat komponen pertama kali dimuat
   useEffect(() => {
-    setIsClient(true);
     const token = localStorage.getItem('jwtToken');
     if (!token) {
-        router.replace('/login');
+      router.replace('/login');
     }
-    // Cek jika URL memiliki query param untuk membuka chat tertentu
+    
+    // Set active room dari URL query
     const roomIdFromQuery = searchParams.get('roomId');
-    if (roomIdFromQuery && !isNaN(parseInt(roomIdFromQuery, 10))) {
-        setActiveRoomId(parseInt(roomIdFromQuery, 10));
+    if (roomIdFromQuery) {
+      setActiveRoomId(parseInt(roomIdFromQuery, 10));
     }
   }, [router, searchParams]);
 
@@ -73,10 +75,10 @@ export default function ChatListPage() {
     error, 
     isLoading 
   } = useSWR<ChatRoomListData[]>(
-    isClient ? '/api/chat/rooms' : null, // Hanya fetch jika sudah di client
+    '/api/chat/rooms', // SWR hanya akan fetch di client-side
     fetcher,
     {
-        refreshInterval: 10000, // Revalidasi setiap 10 detik untuk update daftar percakapan
+      refreshInterval: 10000, // Revalidasi setiap 10 detik
     }
   );
 
@@ -85,45 +87,25 @@ export default function ChatListPage() {
     router.push(`/chat/${roomId}`);
   };
 
-  // Tampilan Loading Awal
-  if (!isClient || (isLoading && !chatRooms)) {
+  // Tampilan Loading Awal (selama SWR mengambil data pertama kali)
+  if (isLoading) {
+    return <ChatListSkeleton />;
+  }
+  
+  // Tampilan Error
+  if (error) {
     return (
       <div className="container mx-auto p-4 pt-6 md:pt-10 max-w-xl">
         <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-800">Percakapan</h1>
-        {/* Skeleton Loader Sederhana */}
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="p-4 bg-white rounded-lg shadow-md flex items-center space-x-4 animate-pulse">
-              <div className="w-12 h-12 bg-gray-300 rounded-full"></div>
-              <div className="flex-1 space-y-2">
-                <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-                <div className="h-3 bg-gray-300 rounded w-1/2"></div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-red-500 p-4 bg-red-50 border border-red-200 rounded-lg">Error: {error.message}</p>
       </div>
     );
   }
 
-  // Tampilan Error
-  if (error) {
-    // @ts-ignore
-    const errorMessage = error.message || "Gagal memuat daftar percakapan.";
-    return (
-        <div className="container mx-auto p-4 pt-6 md:pt-10 max-w-xl">
-            <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-800">Percakapan</h1>
-            <p className="text-red-500 p-4 bg-red-50 border border-red-200 rounded-lg">Error: {errorMessage}</p>
-        </div>
-    );
-  }
-
-  // Tampilan Utama
   return (
     <div className="container mx-auto p-4 pt-6 md:pt-10 max-w-xl">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Percakapan Anda</h1>
-        {/* Tombol untuk memulai chat baru dari daftar teman bisa ditambahkan di sini */}
         <button onClick={() => router.push('/search/users')} className="text-sm font-medium text-blue-600 hover:underline">
           + Chat Baru
         </button>
@@ -139,28 +121,23 @@ export default function ChatListPage() {
         <div className="bg-white shadow-xl rounded-lg border border-gray-200">
           <ul className="divide-y divide-gray-200">
             {chatRooms.map((room) => (
-              <li key={room.id} 
-                  className={`transition-colors duration-150 ${activeRoomId === room.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+              <li
+                key={room.id}
+                className={`transition-colors duration-150 ${activeRoomId === room.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                onClick={() => handleRoomClick(room.id)}
+                style={{ cursor: 'pointer' }}
               >
-                <Link href={`/chat/${room.id}`} className="block p-3 sm:p-4 cursor-pointer" onClick={(e) => {
-                  e.preventDefault(); // Cegah navigasi default Link
-                  handleRoomClick(room.id); // Gunakan router.push agar lebih terkontrol
-                }}>
+                <div className="block p-3 sm:p-4">
                   <div className="flex items-center space-x-4">
                     <div className="flex-shrink-0 relative">
-                      {room.other_profile_picture_url ? (
                         <Image
-                          src={room.other_profile_picture_url}
+                          src={room.other_profile_picture_url || '/default-avatar.png'}
                           alt={room.other_username}
                           width={48}
                           height={48}
                           className="rounded-full object-cover w-12 h-12"
+                          onError={(e) => { e.currentTarget.src = '/default-avatar.png'; }}
                         />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-white font-bold text-lg">
-                          {room.other_username?.substring(0, 1).toUpperCase() || '?'}
-                        </div>
-                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">
@@ -169,17 +146,46 @@ export default function ChatListPage() {
                       <p className="text-xs text-gray-500 truncate">
                         Aktivitas terakhir: {new Date(room.last_message_at).toLocaleString('id-ID', {
                           day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                          timeZone: 'Asia/Jakarta'
                         })}
                       </p>
                     </div>
                   </div>
-                </Link>
+                </div>
               </li>
             ))}
           </ul>
         </div>
       )}
     </div>
+  );
+}
+
+// Komponen Skeleton untuk tampilan loading
+function ChatListSkeleton() {
+    return (
+        <div className="container mx-auto p-4 pt-6 md:pt-10 max-w-xl">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-800">Percakapan</h1>
+            <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                    <div key={i} className="p-4 bg-white rounded-lg shadow-md flex items-center space-x-4 animate-pulse">
+                        <div className="w-12 h-12 bg-gray-300 rounded-full"></div>
+                        <div className="flex-1 space-y-2">
+                            <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                            <div className="h-3 bg-gray-300 rounded w-1/2"></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// Bungkus komponen utama dengan Suspense
+// Ini adalah praktik terbaik untuk menangani hook seperti useSearchParams
+export default function ChatListPage() {
+  return (
+    <Suspense fallback={<ChatListSkeleton />}>
+      <ChatComponent />
+    </Suspense>
   );
 }

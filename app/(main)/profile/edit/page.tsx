@@ -116,19 +116,19 @@ export default function EditProfilePage() {
 
       setSuccessMessage('Profil berhasil diperbarui!');
       // Update data pengguna di localStorage jika ada perubahan signifikan (misal, URL foto profil)
-      if (data.user && data.user.profilePictureUrl !== currentProfile?.profilePictureUrl) {
+      if (data.user && data.user.profile_picture_url !== currentProfile?.profile_picture_url) {
         // Update data user di localStorage agar Navbar juga update
         const userDataString = localStorage.getItem('userData');
         if(userDataString) {
             const localUserData = JSON.parse(userDataString);
-            localUserData.profilePictureUrl = data.user.profilePictureUrl;
+            localUserData.profilePictureUrl = data.user.profile_picture_url;
             localUserData.fullName = data.user.full_name; // Update juga nama jika berubah
             localStorage.setItem('userData', JSON.stringify(localUserData));
         }
       }
-      if (data.user?.profilePictureUrl) {
-        setProfilePicturePreview(data.user.profilePictureUrl); // Update preview ke foto baru dari server
-        setCurrentProfilePictureUrl(data.user.profilePictureUrl);
+      if (data.user?.profile_picture_url) {
+        setProfilePicturePreview(data.user.profile_picture_url); // Update preview ke foto baru dari server
+        setCurrentProfilePictureUrl(data.user.profile_picture_url);
       }
       setProfilePictureFile(null); // Reset pilihan file
 

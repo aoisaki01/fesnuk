@@ -7,7 +7,8 @@ interface RouteParams {
   identifier: string; // Ini adalah ID atau username pengguna yang akan dicabut blokirnya
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const params = await context.params;
   try {
     // "Selesaikan" request sebelum mengakses params
     await request.text();

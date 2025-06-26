@@ -14,32 +14,26 @@ interface ReportRequestBody {
 
 const MAX_REPORTS_TO_HIDE = 5; // Jumlah laporan sebelum postingan disembunyikan
 
-export async function POST(request: NextRequest, { params: routeParams }: { params: RouteParams }) {
-  // Menggunakan 'routeParams' untuk menghindari konflik nama dengan variabel 'params' lain jika ada.
-  
+export async function POST(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const routeParams = await context.params;
   let reason: string | null = null;
   try {
-    // Coba baca body JSON untuk 'reason'. Ini juga "menyelesaikan" objek request.
-    // Jika tidak ada body atau bukan JSON, error akan ditangkap dan 'reason' tetap null.
     const body = await request.json() as ReportRequestBody;
     if (body.reason && typeof body.reason === 'string') {
         reason = body.reason.trim() || null;
     }
   } catch (e) {
-    // Abaikan error jika body tidak ada atau bukan JSON, karena 'reason' opsional.
     console.log("Tidak ada 'reason' dalam body request atau body bukan JSON untuk report.");
   }
 
-  // Sekarang params seharusnya sudah stabil untuk diakses
   if (!routeParams || !routeParams.postId) {
       console.error("API Report Post: postId tidak ditemukan di parameter rute.");
       return NextResponse.json({ message: 'Post ID tidak valid atau tidak ada di parameter rute.' }, { status: 400 });
   }
   const postIdString = routeParams.postId;
 
-
   try {
-    const authenticatedUser = verifyAuth(request); // verifyAuth menggunakan objek request asli
+    const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan.' }, { status: 401 });
     }

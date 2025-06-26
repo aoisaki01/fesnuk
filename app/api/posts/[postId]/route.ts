@@ -34,10 +34,11 @@ interface UpdatePostRequestBody {
 }
 
 // --- GET HANDLER ---
-export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
+export async function GET(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
   try {
-    const postId = parseInt(params.postId, 10);
-    if (isNaN(postId)) {
+    const postIdInt = parseInt(postId, 10);
+    if (isNaN(postIdInt)) {
       return NextResponse.json({ message: 'Post ID tidak valid' }, { status: 400 });
     }
 
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: RouteParam
     if (loggedInUserId) {
       queryParams.push(loggedInUserId); // Untuk is_liked_by_me
     }
-    queryParams.push(postId); // Untuk p.id = ?
+    queryParams.push(postIdInt); // Untuk p.id = ?
 
     const postDetail = stmt.get(...queryParams);
 
@@ -86,22 +87,23 @@ export async function GET(request: NextRequest, { params }: { params: RouteParam
     return NextResponse.json(postDetail, { status: 200 });
 
   } catch (error) {
-    console.error(`Gagal mengambil detail postingan ${params.postId}:`, error);
+    console.error(`Gagal mengambil detail postingan ${postId}:`, error);
     return NextResponse.json({ message: 'Gagal mengambil detail postingan', error: (error as Error).message }, { status: 500 });
   }
 }
 
 // --- PUT HANDLER ---
-export async function PUT(request: NextRequest, { params }: { params: RouteParams }) {
+export async function PUT(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId;
-    const postId = parseInt(params.postId, 10);
+    const postIdInt = parseInt(postId, 10);
 
-    if (isNaN(postId)) {
+    if (isNaN(postIdInt)) {
       return NextResponse.json({ message: 'Post ID tidak valid' }, { status: 400 });
     }
 
@@ -118,7 +120,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     const db = getDbConnection();
 
     const postCheckStmt = db.prepare('SELECT id, user_id FROM posts WHERE id = ?');
-    const existingPost = postCheckStmt.get(postId) as { id: number; user_id: number } | undefined;
+    const existingPost = postCheckStmt.get(postIdInt) as { id: number; user_id: number } | undefined;
 
     if (!existingPost) {
       return NextResponse.json({ message: 'Postingan tidak ditemukan' }, { status: 404 });
@@ -148,7 +150,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
       return NextResponse.json({ message: 'Tidak ada field valid yang dikirim untuk diperbarui' }, { status: 400 });
     }
 
-    updateParams.push(postId); 
+    updateParams.push(postIdInt); 
     updateParams.push(loggedInUserId); 
 
     const updateQuery = `UPDATE posts SET ${setClauses}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`;
@@ -171,7 +173,7 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
       `);
       // Gunakan loggedInUserId untuk parameter is_liked_by_me, bukan authenticatedUser.userId secara langsung
       // karena authenticatedUser bisa null jika tidak ada token, tapi loggedInUserId sudah di-handle.
-      const finalQueryParams = [loggedInUserId, postId];
+      const finalQueryParams = [loggedInUserId, postIdInt];
       const updatedPost = updatedPostStmt.get(...finalQueryParams);
 
       return NextResponse.json({ message: 'Postingan berhasil diperbarui', post: updatedPost }, { status: 200 });
@@ -180,29 +182,30 @@ export async function PUT(request: NextRequest, { params }: { params: RouteParam
     }
 
   } catch (error) {
-    console.error(`Gagal mengedit postingan ${params.postId}:`, error);
+    console.error(`Gagal mengedit postingan ${postId}:`, error);
     return NextResponse.json({ message: 'Gagal mengedit postingan', error: (error as Error).message }, { status: 500 });
   }
 }
 
 // --- DELETE HANDLER ---
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Autentikasi dibutuhkan' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId;
-    const postId = parseInt(params.postId, 10);
+    const postIdInt = parseInt(postId, 10);
 
-    if (isNaN(postId)) {
+    if (isNaN(postIdInt)) {
       return NextResponse.json({ message: 'Post ID tidak valid' }, { status: 400 });
     }
 
     const db = getDbConnection();
 
     const postCheckStmt = db.prepare('SELECT id, user_id FROM posts WHERE id = ?');
-    const existingPost = postCheckStmt.get(postId) as { id: number; user_id: number } | undefined;
+    const existingPost = postCheckStmt.get(postIdInt) as { id: number; user_id: number } | undefined;
 
     if (!existingPost) {
       return NextResponse.json({ message: 'Postingan tidak ditemukan' }, { status: 404 });
@@ -213,17 +216,16 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     }
 
     const deleteStmt = db.prepare('DELETE FROM posts WHERE id = ? AND user_id = ?');
-    const info = deleteStmt.run(postId, loggedInUserId);
+    const info = deleteStmt.run(postIdInt, loggedInUserId);
 
     if (info.changes > 0) {
       return NextResponse.json({ message: 'Postingan berhasil dihapus' }, { status: 200 });
-      // Atau: return new NextResponse(null, { status: 204 });
     } else {
       return NextResponse.json({ message: 'Gagal menghapus postingan atau postingan tidak ditemukan' }, { status: 404 });
     }
 
   } catch (error) {
-    console.error(`Gagal menghapus postingan ${params.postId}:`, error);
+    console.error(`Gagal menghapus postingan ${postId}:`, error);
     return NextResponse.json({ message: 'Gagal menghapus postingan', error: (error as Error).message }, { status: 500 });
   }
 }

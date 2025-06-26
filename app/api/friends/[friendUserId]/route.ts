@@ -7,14 +7,15 @@ interface RouteParams {
   friendUserId: string; // ID pengguna yang ingin di-unfriend
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+    const { friendUserId } = await context.params;
   try {
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) {
       return NextResponse.json({ message: 'Akses ditolak: Token tidak valid atau tidak ada' }, { status: 401 });
     }
     const loggedInUserId = authenticatedUser.userId;
-    const friendUserIdToUnfriend = parseInt(params.friendUserId, 10);
+    const friendUserIdToUnfriend = parseInt(friendUserId, 10);
 
     if (isNaN(friendUserIdToUnfriend)) {
       return NextResponse.json({ message: 'User ID teman tidak valid' }, { status: 400 });
@@ -59,7 +60,7 @@ export async function DELETE(request: NextRequest, { params }: { params: RoutePa
     }
 
   } catch (error) {
-    console.error(`Gagal membatalkan pertemanan dengan userId: ${params.friendUserId}:`, error);
+    console.error(`Gagal membatalkan pertemanan dengan userId: ${friendUserId}:`, error);
     return NextResponse.json({ message: 'Gagal membatalkan pertemanan', error: (error as Error).message }, { status: 500 });
   }
 }

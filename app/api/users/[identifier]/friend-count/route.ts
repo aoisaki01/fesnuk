@@ -6,12 +6,10 @@ interface RouteParams {
   identifier: string;
 }
 
-export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
+export async function GET(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const params = await context.params;
   try {
-    // =============================================
-    // TAMBAHKAN BARIS INI UNTUK MEMPERBAIKI ERROR
     await request.text(); // "Selesaikan" request sebelum mengakses params
-    // =============================================
 
     const identifier = params.identifier;
     let userIdToQuery: number | null = null;

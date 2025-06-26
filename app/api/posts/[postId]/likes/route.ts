@@ -42,7 +42,9 @@ function checkBlockStatus(db: ReturnType<typeof getDbConnection>, userId1: numbe
 
 
 // Handler untuk POST request - Menyukai sebuah postingan
-export async function POST(request: NextRequest, { params }: { params: RouteParams }) {
+export async function POST(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
+
   try {
     // "Selesaikan" request sebelum mengakses params (best practice Next.js baru)
     // Untuk POST ini, kita tidak mengharapkan body JSON, jadi request.text() cukup.
@@ -55,13 +57,13 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
     const interactorId = authenticatedUser.userId; // Pengguna yang melakukan aksi like
     const interactorUsername = authenticatedUser.username; // Untuk pesan notifikasi
     
-    if (!params || !params.postId) {
+    if (!postId) {
         console.error("API Like Post: postId tidak ditemukan di parameter rute.");
         return NextResponse.json({ message: 'Post ID tidak ditemukan di parameter rute.' }, { status: 400 });
     }
-    const postId = parseInt(params.postId, 10);
+    const postIdInt = parseInt(postId, 10);
 
-    if (isNaN(postId)) {
+    if (isNaN(postIdInt)) {
       return NextResponse.json({ message: 'Post ID tidak valid (bukan angka).' }, { status: 400 });
     }
 
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
 
     // 1. Cek apakah postingan ada, siapa pemiliknya, dan apakah visible
     const postStmt = db.prepare('SELECT id, user_id as authorId, visibility_status FROM posts WHERE id = ?');
-    const post = postStmt.get(postId) as { id: number; authorId: number; visibility_status: string } | undefined;
+    const post = postStmt.get(postIdInt) as { id: number; authorId: number; visibility_status: string } | undefined;
 
     if (!post) {
       return NextResponse.json({ message: 'Postingan tidak ditemukan.' }, { status: 404 });
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
 
     // 3. Cek apakah pengguna sudah menyukai postingan ini sebelumnya
     const likeCheckStmt = db.prepare('SELECT id FROM likes WHERE user_id = ? AND post_id = ?');
-    const existingLike = likeCheckStmt.get(interactorId, postId);
+    const existingLike = likeCheckStmt.get(interactorId, postIdInt);
 
     if (existingLike) {
       return NextResponse.json({ message: 'Anda sudah menyukai postingan ini.' }, { status: 409 }); // Conflict
@@ -97,13 +99,13 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
 
     // 4. Tambahkan like ke database
     const insertLikeStmt = db.prepare('INSERT INTO likes (user_id, post_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
-    const info = insertLikeStmt.run(interactorId, postId);
+    const info = insertLikeStmt.run(interactorId, postIdInt);
 
     if (info.changes > 0) {
       const likeId = info.lastInsertRowid as number;
       // Hitung jumlah total like untuk postingan ini
       const countStmt = db.prepare('SELECT COUNT(*) as likeCount FROM likes WHERE post_id = ?');
-      const result = countStmt.get(postId) as { likeCount: number };
+      const result = countStmt.get(postIdInt) as { likeCount: number };
 
       // highlight-start
       // Buat notifikasi untuk pemilik postingan (jika bukan like postingan sendiri)
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
           actorUserId: interactorId,
           type: 'POST_LIKED', // Tipe notifikasi yang jelas
           targetEntityType: 'POST',
-          targetEntityId: postId,
+          targetEntityId: postIdInt,
           message: `${interactorUsername || 'Seseorang'} menyukai postingan Anda.`
         });
       }
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
     }
 
   } catch (error: any) {
-    console.error(`Gagal menyukai postingan postId ${params?.postId}:`, error);
+    console.error(`Gagal menyukai postingan postId ${postId}:`, error);
     if (error.message?.includes('UNIQUE constraint failed')) { // Dari tabel likes
         return NextResponse.json({ message: 'Anda sudah menyukai postingan ini (constraint).', error: error.message }, { status: 409 });
     }
@@ -139,34 +141,32 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
 
 // Handler untuk DELETE request - Membatalkan suka pada sebuah postingan
 // (Tidak ada notifikasi yang dibuat saat unlike)
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<RouteParams> }) {
+  const { postId } = await context.params;
   try {
     await request.text(); // Selesaikan request
     const authenticatedUser = verifyAuth(request);
     if (!authenticatedUser) return NextResponse.json({ message: 'Akses ditolak' }, { status: 401 });
     
     const interactorId = authenticatedUser.userId;
-    if (!params || !params.postId) return NextResponse.json({ message: 'Post ID tidak ada' }, { status: 400 });
-    const postId = parseInt(params.postId, 10);
-    if (isNaN(postId)) return NextResponse.json({ message: 'Post ID tidak valid' }, { status: 400 });
+    if (!postId) return NextResponse.json({ message: 'Post ID tidak ada' }, { status: 400 });
+    const postIdInt = parseInt(postId, 10);
+    if (isNaN(postIdInt)) return NextResponse.json({ message: 'Post ID tidak valid' }, { status: 400 });
 
     const db = getDbConnection();
 
-    // (Opsional) Cek blokir atau visibility post sebelum unlike, tapi mungkin tidak krusial
-    // karena jika sudah di-like, interaksi sebelumnya sudah diizinkan.
-
     const deleteLikeStmt = db.prepare('DELETE FROM likes WHERE user_id = ? AND post_id = ?');
-    const info = deleteLikeStmt.run(interactorId, postId);
+    const info = deleteLikeStmt.run(interactorId, postIdInt);
 
     if (info.changes > 0) {
       const countStmt = db.prepare('SELECT COUNT(*) as likeCount FROM likes WHERE post_id = ?');
-      const result = countStmt.get(postId) as { likeCount: number };
+      const result = countStmt.get(postIdInt) as { likeCount: number };
       return NextResponse.json({ message: 'Suka berhasil dibatalkan', totalLikes: result ? result.likeCount : 0 }, { status: 200 });
     } else {
       return NextResponse.json({ message: 'Gagal membatalkan suka: Entri tidak ditemukan atau Anda belum menyukai postingan ini.' }, { status: 404 });
     }
   } catch (error: any) {
-    console.error(`Gagal membatalkan suka postId ${params?.postId}:`, error);
+    console.error(`Gagal membatalkan suka postId ${postId}:`, error);
     return NextResponse.json({ message: 'Gagal memproses pembatalan suka.', error: error.message }, { status: 500 });
   }
 }
