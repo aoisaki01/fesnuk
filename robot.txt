@@ -1,0 +1,24 @@
+# robots.txt untuk Aplikasi Fesnuk
+
+# Memberikan izin ke semua bot (User-agent)
+User-agent: *
+
+# Halaman yang diizinkan untuk di-crawl
+Disallow : /
+Disallow : post/
+
+# Halaman atau direktori yang TIDAK diizinkan untuk di-crawl
+Disallow: /api/
+Disallow: /profile/
+Disallow: /chat/
+Disallow: /settings/
+Disallow: /reels/
+Disallow: /notifications/
+Disallow: /search/
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+
+# Sitemap (jika Anda membuatnya nanti)
+# Sitemap: https://pacipik.web.id/sitemap.xml

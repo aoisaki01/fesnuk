@@ -1,23 +1,16 @@
-import type { NextConfig } from "next";
-
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ...konfigurasi lain yang mungkin sudah Anda miliki...
-
+  // ...konfigurasi lain seperti 'images'
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'files.uty.ac.id',
-        port: '',
-        pathname: '/**',
+        // ...
       },
-      // Anda bisa menambahkan hostname lain di sini jika perlu
-      // {
-      //   protocol: 'https',
-      //   hostname: 'nama-domain-lain.com',
-      // },
     ],
   },
+  // Pastikan tidak ada baris 'output: "export"' di sini
 };
 
 module.exports = nextConfig;
